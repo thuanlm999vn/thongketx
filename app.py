@@ -4,7 +4,7 @@ import pandas as pd
 # --- CẤU HÌNH TRANG ---
 st.set_page_config(page_title="Soi Cầu Pro", page_icon="🎲", layout="centered")
 
-# --- CSS TÙY CHỈNH ---
+# --- CSS GIAO DIỆN ---
 st.markdown("""
     <style>
     .stButton>button { width: 100%; border-radius: 8px; height: 3.5em; font-weight: bold;}
@@ -19,7 +19,7 @@ if 'history' not in st.session_state:
 # --- HÀM LOGIC ---
 def them_ket_qua(diem=None, ket_qua=None):
     if diem is not None:
-        if diem > 0: # Nếu nhập số cụ thể
+        if diem > 0: 
             if 11 <= diem <= 18: ket_qua = 'Tài'
             elif 3 <= diem <= 10: ket_qua = 'Xỉu'
     st.session_state.history.append({'diem': diem, 'ket_qua': ket_qua})
@@ -28,7 +28,7 @@ def phan_tich_cau(data):
     if not data: return 0, 0, 0, 0
     results = [x['ket_qua'] for x in data]
     
-    # 1. Tính Bệt
+    # Tính Bệt
     bet_count, max_bet, current_bet = 0, 0, 1
     for i in range(1, len(results)):
         if results[i] == results[i-1]:
@@ -42,7 +42,7 @@ def phan_tich_cau(data):
         bet_count += 1
         max_bet = max(max_bet, current_bet)
 
-    # 2. Tính Nhảy (1-1)
+    # Tính Nhảy
     nhay_count, max_nhay, current_nhay = 0, 0, 1
     for i in range(1, len(results)):
         if results[i] != results[i-1]:
@@ -61,85 +61,82 @@ def phan_tich_cau(data):
 # --- GIAO DIỆN CHÍNH ---
 st.title("🎲 SUPER SOI CẦU ONLINE")
 
-# 1. KHU VỰC NHẬP LIỆU
-st.info("👇 Nhập kết quả ván mới nhất tại đây")
+# === PHẦN MỚI: UPLOAD ẢNH ===
+with st.expander("📸 MỞ ẢNH SOII CẦU", expanded=True):
+    uploaded_file = st.file_uploader("Chọn ảnh chụp màn hình game:", type=['jpg', 'png', 'jpeg'])
+    if uploaded_file is not None:
+        # Hiển thị ảnh để người dùng nhìn
+        st.image(uploaded_file, caption="Ảnh bạn vừa tải lên", use_container_width=True)
+        st.info("💡 Mẹo: Nhìn vào ảnh trên và bấm nút nhập liệu bên dưới cho nhanh!")
+
+# === PHẦN NHẬP LIỆU ===
+st.divider()
+st.caption("👇 NHẬP KẾT QUẢ VÁN MỚI")
 c1, c2, c3 = st.columns([1, 1, 1])
 
 with c1:
     if st.button("🔴 TÀI", type="primary"):
-        them_ket_qua(ket_qua="Tài", diem=0) # 0 nghĩa là không rõ điểm
+        them_ket_qua(ket_qua="Tài", diem=0)
         st.rerun()
 with c2:
     if st.button("🔵 XỈU"):
         them_ket_qua(ket_qua="Xỉu", diem=0)
         st.rerun()
 with c3:
-    # Nhập số nhanh
     with st.popover("🔢 Nhập Số"):
-        num = st.number_input("Điểm số:", 3, 18, step=1)
-        if st.button("Lưu Số"):
+        num = st.number_input("Điểm:", 3, 18, step=1)
+        if st.button("Lưu"):
             them_ket_qua(diem=int(num))
             st.rerun()
 
-# 2. KHU VỰC SỬA LỖI
+# === PHẦN SỬA LỖI ===
 if len(st.session_state.history) > 0:
     with st.expander("🛠️ SỬA / XÓA (5 Ván gần nhất)"):
-        if st.button("↩️ Xóa ván vừa nhập (Undo)"):
+        if st.button("↩️ Xóa ván cuối (Undo)"):
             st.session_state.history.pop()
             st.rerun()
-        st.divider()
-        st.write("Hoặc chỉnh sửa chi tiết:")
+        
+        # Form sửa chi tiết
         so_luong = len(st.session_state.history)
-        start_index = max(0, so_luong - 5)
-        with st.form("form_sua_loi"):
-            for i in range(so_luong - 1, start_index - 1, -1):
+        start = max(0, so_luong - 5)
+        with st.form("sua_loi"):
+            for i in range(so_luong - 1, start - 1, -1):
                 item = st.session_state.history[i]
-                c_idx, c_kq, c_diem = st.columns([1, 2, 2])
-                with c_idx: st.write(f"**Ván {i+1}**")
-                with c_kq:
-                    idx_val = 0 if item['ket_qua'] == 'Tài' else 1
-                    new_kq = st.selectbox("KQ", ["Tài", "Xỉu"], index=idx_val, key=f"kq_{i}", label_visibility="collapsed")
-                with c_diem:
-                    val_diem = item['diem'] if item['diem'] is not None else 0
-                    new_diem = st.number_input("Điểm", value=val_diem, min_value=0, max_value=18, key=f"d_{i}", label_visibility="collapsed")
-            submit_sua = st.form_submit_button("💾 Lưu Thay Đổi")
-            if submit_sua:
-                for i in range(so_luong - 1, start_index - 1, -1):
-                    k_kq = st.session_state[f"kq_{i}"]
-                    k_diem = st.session_state[f"d_{i}"]
-                    st.session_state.history[i]['ket_qua'] = k_kq
-                    st.session_state.history[i]['diem'] = k_diem if k_diem > 0 else None
-                st.success("Đã sửa thành công!")
+                cc1, cc2, cc3 = st.columns([1, 2, 2])
+                with cc1: st.write(f"#{i+1}")
+                with cc2: 
+                    idx = 0 if item['ket_qua'] == 'Tài' else 1
+                    st.session_state[f"k_{i}"] = st.selectbox("", ["Tài", "Xỉu"], index=idx, key=f"s_{i}", label_visibility="collapsed")
+                with cc3:
+                    d_val = item['diem'] if item['diem'] else 0
+                    st.session_state[f"d_{i}"] = st.number_input("", value=d_val, min_value=0, max_value=18, key=f"n_{i}", label_visibility="collapsed")
+            
+            if st.form_submit_button("Lưu thay đổi"):
+                for i in range(so_luong - 1, start - 1, -1):
+                    new_k = st.session_state[f"s_{i}"]
+                    new_d = st.session_state[f"n_{i}"]
+                    st.session_state.history[i]['ket_qua'] = new_k
+                    st.session_state.history[i]['diem'] = new_d if new_d > 0 else None
                 st.rerun()
 
-# 3. DASHBOARD THỐNG KÊ
-st.divider()
+# === DASHBOARD ===
 if len(st.session_state.history) > 0:
+    st.divider()
     df = pd.DataFrame(st.session_state.history)
     tong = len(df)
     tai = len(df[df['ket_qua'] == 'Tài'])
     xiu = len(df[df['ket_qua'] == 'Xỉu'])
     
-    # 3.1. Tổng quan
     m1, m2, m3 = st.columns(3)
-    m1.metric("Tổng", tong)
-    m2.metric("Tài 🔴", f"{tai}", delta=f"{tai/tong*100:.0f}%")
-    m3.metric("Xỉu 🔵", f"{xiu}", delta=f"{xiu/tong*100:.0f}%")
+    m1.metric("Tổng ván", tong)
+    m2.metric("Tài 🔴", f"{tai}", f"{(tai/tong)*100:.0f}%")
+    m3.metric("Xỉu 🔵", f"{xiu}", f"{(xiu/tong)*100:.0f}%")
     
-    # 3.2. Phân tích Cầu
     bet, max_bet, nhay, max_nhay = phan_tich_cau(st.session_state.history)
-    st.caption("--- Phân tích Cầu ---")
     k1, k2 = st.columns(2)
-    k1.info(f"🐍 Bệt dài nhất: **{max_bet}**")
-    k2.warning(f"⚡ Nhảy dài nhất: **{max_nhay}**")
+    k1.info(f"🐍 Bệt dài nhất: {max_bet}")
+    k2.warning(f"⚡ Nhảy dài nhất: {max_nhay}")
     
-    # 3.3. Log Hình ảnh
     st.write("##### 📜 Lịch sử cầu:")
-    icons = []
-    for h in st.session_state.history:
-        d = h['diem'] if h['diem'] and h['diem'] > 0 else ""
-        icon = "🔴" if h['ket_qua'] == 'Tài' else "🔵"
-        icons.append(f"{icon}{d}")
-    st.text_area("", "  ➜  ".join(icons), height=80, disabled=True)
-else:
-    st.warning("Chưa có dữ liệu. Hãy nhập ván đầu tiên!")
+    icons = ["🔴" if h['ket_qua'] == 'Tài' else "🔵" for h in st.session_state.history]
+    st.text_area("", "  ➜  ".join(icons), height=100)
