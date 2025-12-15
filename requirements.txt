@@ -1,2 +1,5 @@
 streamlit
 pandas
+numpy
+easyocr
+opencv-python-headless
