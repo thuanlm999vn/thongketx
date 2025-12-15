@@ -1,8 +1,11 @@
 import streamlit as st
 import pandas as pd
+import easyocr
+import cv2
+import numpy as np
 
 # --- CẤU HÌNH TRANG ---
-st.set_page_config(page_title="Soi Cầu Pro", page_icon="🎲", layout="centered")
+st.set_page_config(page_title="Soi Cầu AI Pro", page_icon="🎲", layout="centered")
 
 # --- CSS GIAO DIỆN ---
 st.markdown("""
@@ -11,6 +14,40 @@ st.markdown("""
     div[data-testid="stMetricValue"] { font-size: 24px; }
     </style>
 """, unsafe_allow_html=True)
+
+# --- KHỞI TẠO AI (CACHE ĐỂ CHẠY NHANH) ---
+@st.cache_resource
+def load_ai_reader():
+    # Tải model nhận diện chữ (chạy trên CPU)
+    return easyocr.Reader(['en'], gpu=False) 
+
+# --- HÀM XỬ LÝ ẢNH ---
+def doc_so_tu_anh(uploaded_file):
+    try:
+        # 1. Chuyển ảnh upload thành định dạng OpenCV
+        file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
+        image = cv2.imdecode(file_bytes, 1)
+        
+        # 2. Dùng AI đọc số
+        reader = load_ai_reader()
+        # detail=0 chỉ lấy text
+        results = reader.readtext(image, detail=0) 
+        
+        # 3. Lọc lấy các con số hợp lệ (3-18)
+        so_tim_thay = []
+        for text in results:
+            # Loại bỏ ký tự lạ, chỉ lấy số
+            text_clean = ''.join(filter(str.isdigit, text))
+            if text_clean.isdigit():
+                num = int(text_clean)
+                # Chỉ lấy số trong khoảng điểm Tài Xỉu
+                if 3 <= num <= 18:
+                    so_tim_thay.append(num)
+        
+        return so_tim_thay
+    except Exception as e:
+        st.error(f"Lỗi đọc ảnh: {e}")
+        return []
 
 # --- KHỞI TẠO DỮ LIỆU ---
 if 'history' not in st.session_state:
@@ -59,23 +96,45 @@ def phan_tich_cau(data):
     return bet_count, max_bet, nhay_count, max_nhay
 
 # --- GIAO DIỆN CHÍNH ---
-st.title("🎲 SUPER SOI CẦU ONLINE")
+st.title("🎲 SUPER SOI CẦU AI")
 
-# === PHẦN MỚI: UPLOAD ẢNH ===
-with st.expander("📸 MỞ ẢNH SOII CẦU", expanded=True):
-    uploaded_file = st.file_uploader("Chọn ảnh chụp màn hình game:", type=['jpg', 'png', 'jpeg'])
+# === PHẦN 1: AI ĐỌC ẢNH TỰ ĐỘNG ===
+with st.expander("📸 QUÉT ẢNH TỰ ĐỘNG", expanded=True):
+    uploaded_file = st.file_uploader("Chọn ảnh game:", type=['jpg', 'png', 'jpeg'])
+    
     if uploaded_file is not None:
-        # Hiển thị ảnh để người dùng nhìn
-        st.image(uploaded_file, caption="Ảnh bạn vừa tải lên", use_container_width=True)
-        st.info("💡 Mẹo: Nhìn vào ảnh trên và bấm nút nhập liệu bên dưới cho nhanh!")
+        st.image(uploaded_file, caption="Ảnh đã chọn", use_container_width=True)
+        
+        if st.button("🚀 BẤM ĐỂ QUÉT SỐ TỪ ẢNH", type="primary"):
+            with st.spinner("AI đang căng mắt đọc số... (Mất khoảng 5-10 giây)"):
+                # Reset file pointer để đọc lại từ đầu
+                uploaded_file.seek(0)
+                ket_qua_so = doc_so_tu_anh(uploaded_file)
+                
+                if len(ket_qua_so) > 0:
+                    st.success(f"✅ Đã tìm thấy {len(ket_qua_so)} con số: {ket_qua_so}")
+                    # Hỏi người dùng có muốn nạp vào không
+                    st.session_state.temp_scan = ket_qua_so
+                else:
+                    st.warning("⚠️ Không đọc được số nào rõ ràng. Hãy thử ảnh nét hơn hoặc nhập tay bên dưới.")
+
+    # Nút xác nhận nạp dữ liệu
+    if 'temp_scan' in st.session_state and len(st.session_state.temp_scan) > 0:
+        if st.button("📥 Nạp các số này vào Thống Kê"):
+            # Xóa dữ liệu cũ nếu muốn (hoặc nối tiếp)
+            st.session_state.history = [] 
+            for so in st.session_state.temp_scan:
+                them_ket_qua(diem=so)
+            del st.session_state.temp_scan # Xóa tạm
+            st.rerun()
 
 # === PHẦN NHẬP LIỆU ===
 st.divider()
-st.caption("👇 NHẬP KẾT QUẢ VÁN MỚI")
+st.caption("👇 NHẬP KẾT QUẢ VÁN MỚI (THỦ CÔNG)")
 c1, c2, c3 = st.columns([1, 1, 1])
 
 with c1:
-    if st.button("🔴 TÀI", type="primary"):
+    if st.button("🔴 TÀI"):
         them_ket_qua(ket_qua="Tài", diem=0)
         st.rerun()
 with c2:
@@ -96,7 +155,6 @@ if len(st.session_state.history) > 0:
             st.session_state.history.pop()
             st.rerun()
         
-        # Form sửa chi tiết
         so_luong = len(st.session_state.history)
         start = max(0, so_luong - 5)
         with st.form("sua_loi"):
