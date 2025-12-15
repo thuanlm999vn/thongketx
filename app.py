@@ -20,43 +20,76 @@ st.markdown("""
 def load_ai_reader():
     return easyocr.Reader(['en'], gpu=False)
 
-# --- HÀM XỬ LÝ ẢNH THÔNG MINH (THEO CỘT) ---
+# --- CẬP NHẬT HÀM XỬ LÝ ẢNH (PHIÊN BẢN 2.0 - SIÊU NÉT) ---
 def doc_so_tu_anh(uploaded_file):
     try:
-        # 1. Đọc và Tiền xử lý ảnh
+        # 1. Đọc ảnh gốc
         file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
         image = cv2.imdecode(file_bytes, 1)
         
-        # Chuyển xám và tăng tương phản để tách số khỏi nền
-        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-        thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)[1]
+        # === CẢI TIẾN QUAN TRỌNG: PHÓNG TO ẢNH ===
+        # Phóng to gấp 3 lần để tách rõ các con số nhỏ
+        scale_percent = 300 # 300%
+        width = int(image.shape[1] * scale_percent / 100)
+        height = int(image.shape[0] * scale_percent / 100)
+        dim = (width, height)
+        image = cv2.resize(image, dim, interpolation=cv2.INTER_CUBIC)
 
-        # 2. AI Đọc (Lấy cả tọa độ)
-        reader = load_ai_reader()
-        # detail=1 để lấy tọa độ khung (bounding box)
-        raw_results = reader.readtext(thresh, detail=1, allowlist='0123456789')
+        # 2. Xử lý màu sắc (Tăng tương phản mạnh)
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         
-        # 3. Thuật toán sắp xếp: CỘT TRƯỚC -> HÀNG SAU
-        # raw_results có dạng: [ [box, text, conf], ... ]
-        # box = [[tl, tr, br, bl]]
+        # Dùng Adaptive Threshold (Thích ứng) để xử lý vòng tròn quanh số tốt hơn
+        thresh = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
+                                       cv2.THRESH_BINARY_INV, 31, 15)
+
+        # 3. Gọi AI đọc (Chế độ đọc số)
+        reader = load_ai_reader()
+        raw_results = reader.readtext(thresh, detail=1, allowlist='0123456789')
         
         detected_items = []
         for (bbox, text, prob) in raw_results:
-            # Lọc số rác
             if not text.isdigit(): continue
             num = int(text)
             if not (3 <= num <= 18): continue
             
-            # Tính tọa độ trung tâm của con số (Center X, Center Y)
+            # Lấy tâm
             (tl, tr, br, bl) = bbox
             center_x = int((tl[0] + tr[0]) / 2)
             center_y = int((tl[1] + bl[1]) / 2)
-            
             detected_items.append({'val': num, 'cx': center_x, 'cy': center_y})
 
         if not detected_items:
             return []
 
+        # 4. Sắp xếp Cột Dọc (Logic đã điều chỉnh theo tỷ lệ phóng to)
+        detected_items.sort(key=lambda k: k['cx'])
+
+        sorted_results = []
+        current_column = []
+        
+        if len(detected_items) > 0:
+            current_column.append(detected_items[0])
+            # Vì ảnh phóng to gấp 3, khoảng cách giữa các cột cũng tăng lên
+            THRESHOLD_X = 60 # Tăng ngưỡng lệch cột lên (cũ là 30)
+            
+            for i in range(1, len(detected_items)):
+                diff = abs(detected_items[i]['cx'] - detected_items[i-1]['cx'])
+                
+                if diff < THRESHOLD_X:
+                    current_column.append(detected_items[i])
+                else:
+                    current_column.sort(key=lambda k: k['cy'])
+                    sorted_results.extend([item['val'] for item in current_column])
+                    current_column = [detected_items[i]]
+            
+            current_column.sort(key=lambda k: k['cy'])
+            sorted_results.extend([item['val'] for item in current_column])
+
+        return sorted_results
+
+    except Exception as e:
+        st.error(f"Lỗi: {e}")
+        return []
         # --- LOGIC SẮP XẾP CỘT ---
         # B1: Sắp xếp tất cả theo tọa độ X (để gom các số cùng cột lại gần nhau)
         detected_items.sort(key=lambda k: k['cx'])
@@ -231,3 +264,4 @@ if len(st.session_state.history) > 0:
     
     icons = ["🔴" if h['ket_qua'] == 'Tài' else "🔵" for h in st.session_state.history]
     st.text_area("Log", " ".join(icons))
+
