@@ -1,405 +1,273 @@
 import streamlit as st
 import pandas as pd
-import plotly.express as px
 import datetime
 
 # --- CẤU HÌNH TRANG ---
-st.set_page_config(page_title="Tai Xiu Auto Tracker", page_icon="🎲", layout="wide")
+st.set_page_config(page_title="Tai Xiu AI Predictor", page_icon="🎯", layout="centered")
 
-# --- CSS GIAO DIỆN (DARK MODE PRO) ---
+# --- CSS GIAO DIỆN CAO CẤP ---
 st.markdown("""
     <style>
-    /* Nền tối chủ đạo */
+    /* Nền tổng thể */
     .stApp {
-        background: linear-gradient(to bottom right, #111827, #1f2937, #111827);
-        color: white;
+        background-color: #0e1117;
+        color: #ffffff;
     }
     
-    /* Card Container */
-    .css-card {
-        background-color: rgba(31, 41, 55, 0.6);
-        backdrop-filter: blur(10px);
-        border: 1px solid rgba(75, 85, 99, 0.4);
-        border-radius: 16px;
+    /* CARD DỰ ĐOÁN (QUAN TRỌNG NHẤT) */
+    .prediction-card {
         padding: 20px;
+        border-radius: 15px;
+        text-align: center;
         margin-bottom: 20px;
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+        border: 2px solid rgba(255,255,255,0.1);
+    }
+    .pred-tai {
+        background: linear-gradient(135deg, #b91c1c 0%, #7f1d1d 100%);
+        border-color: #ef4444;
+    }
+    .pred-xiu {
+        background: linear-gradient(135deg, #1d4ed8 0%, #1e3a8a 100%);
+        border-color: #3b82f6;
+    }
+    .pred-wait {
+        background: #1f2937;
+        border-color: #4b5563;
     }
     
-    /* Nút bấm Tài/Xỉu to */
-    .stButton>button {
-        border-radius: 12px;
-        height: 60px;
+    /* Typography */
+    .big-text { font-size: 50px; font-weight: 900; letter-spacing: 2px; text-shadow: 2px 2px 4px rgba(0,0,0,0.5); }
+    .sub-text { font-size: 18px; color: #e5e7eb; margin-top: 5px; font-weight: 500;}
+    .confidence-badge { 
+        background-color: rgba(0,0,0,0.3); 
+        padding: 5px 15px; 
+        border-radius: 20px; 
+        font-size: 14px; 
+        display: inline-block;
+        margin-top: 10px;
+    }
+
+    /* CARD THỐNG KÊ NHỎ */
+    .stat-box {
+        background-color: #1f2937;
+        padding: 15px;
+        border-radius: 10px;
+        text-align: center;
+        border: 1px solid #374151;
+    }
+    .stat-num { font-size: 24px; font-weight: bold; }
+    .stat-label { font-size: 12px; color: #9ca3af; text-transform: uppercase; }
+    
+    /* HISTORY VISUAL */
+    .history-dot {
+        display: inline-block;
+        width: 30px; 
+        height: 30px; 
+        line-height: 30px;
+        text-align: center;
+        border-radius: 50%;
+        margin: 2px;
         font-weight: bold;
-        font-size: 20px;
-        border: none;
-        transition: all 0.2s;
+        font-size: 12px;
     }
+    .dot-tai { background-color: #ef4444; color: white; }
+    .dot-xiu { background-color: #3b82f6; color: white; }
     
-    /* Chỉ số thống kê */
-    .stat-label { font-size: 13px; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.5px; }
-    .stat-value { font-size: 32px; font-weight: 800; }
-    
-    /* Lịch sử cầu */
-    .history-container {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 4px;
-    }
-    .history-item {
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        width: 40px;
-        height: 40px;
-        border-radius: 8px;
-        font-weight: bold;
-        font-size: 14px;
-        position: relative;
-    }
-    .his-tai { 
-        background: linear-gradient(135deg, #ef4444 0%, #b91c1c 100%); 
-        color: white; 
-        box-shadow: 0 2px 4px rgba(239, 68, 68, 0.3);
-    }
-    .his-xiu { 
-        background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%); 
-        color: white;
-        box-shadow: 0 2px 4px rgba(59, 130, 246, 0.3);
-    }
-    
-    /* Ẩn mặc định của Streamlit */
-    .stDeployButton {display:none;}
+    /* Ẩn các phần thừa của Streamlit */
     header {visibility: hidden;}
-    #MainMenu {visibility: hidden;}
+    .stDeployButton {display:none;}
     </style>
 """, unsafe_allow_html=True)
 
-# --- KHỞI TẠO STATE ---
+# --- STATE ---
 if 'history' not in st.session_state:
     st.session_state.history = []
 
-# --- HÀM LOGIC ---
-def add_result(result, total=None):
-    new_entry = {
-        'id': datetime.datetime.now().timestamp(),
-        'result': result,
-        'total': total,
-        'timestamp': datetime.datetime.now().strftime("%H:%M:%S")
-    }
-    # Thêm vào đầu danh sách (Mới nhất)
-    st.session_state.history.insert(0, new_entry)
-    # Giữ lại 200 kết quả
-    st.session_state.history = st.session_state.history[:200]
+# --- LOGIC ---
+def add_result(res):
+    st.session_state.history.insert(0, {'result': res, 'ts': datetime.datetime.now()})
+    st.session_state.history = st.session_state.history[:100]
 
-def analyze_data(history):
-    if not history:
-        return None
+def phan_tich_va_du_doan(history):
+    if not history: return None
     
-    df = pd.DataFrame(history)
-    total = len(df)
-    tai_count = len(df[df['result'] == 'Tài'])
-    xiu_count = len(df[df['result'] == 'Xỉu'])
+    # 1. Thống kê cơ bản
+    total = len(history)
+    tai = len([x for x in history if x['result'] == 'Tài'])
+    xiu = len([x for x in history if x['result'] == 'Xỉu'])
     
-    # --- THUẬT TOÁN ĐẾM BỆT/NHẢY (THEO ĐỊNH NGHĨA CỦA BẠN) ---
-    # Duyệt từ quá khứ đến hiện tại để đếm tổng số lần chuyển đổi
-    # history[0] là mới nhất, history[-1] là cũ nhất
-    # Ta duyệt từ 0 đến len-1 để so sánh cặp (i) và (i+1)
-    
-    total_bet = 0  # Tổng số điểm Bệt
-    total_nhay = 0 # Tổng số điểm Nhảy
-    
-    for i in range(len(history) - 1):
-        current = history[i]['result']
-        prev = history[i+1]['result'] # Ván trước đó
-        
-        if current == prev:
-            total_bet += 1 # Cùng màu -> Bệt
+    # 2. Đếm Bệt/Nhảy Tổng quát
+    # Duyệt từ quá khứ đến hiện tại để đếm cặp
+    count_bet = 0
+    count_nhay = 0
+    hist_rev = history[::-1] # Đảo ngược để duyệt cũ -> mới
+    for i in range(len(hist_rev)-1):
+        if hist_rev[i]['result'] == hist_rev[i+1]['result']:
+            count_bet += 1
         else:
-            total_nhay += 1 # Khác màu -> Nhảy
+            count_nhay += 1
 
-    # --- TÍNH DÂY DÀI NHẤT (MAX STREAK) ---
-    # Tính chuỗi liên tiếp hiện tại (Current Streak)
+    # 3. Phân tích Cầu Hiện Tại (Quan trọng nhất để dự đoán)
+    # Lấy chuỗi giống nhau liên tiếp từ ván mới nhất
     current_streak = 1
-    current_type = history[0]['result']
+    last_res = history[0]['result']
     for i in range(1, len(history)):
-        if history[i]['result'] == current_type:
+        if history[i]['result'] == last_res:
             current_streak += 1
         else:
             break
             
-    # Tính Max Bệt (Dây cùng màu dài nhất) & Max Nhảy (Dây 1-1 dài nhất)
-    max_bet_streak = 0
-    max_nhay_streak = 0
-    
-    temp_bet = 1
-    temp_nhay = 1
-    
-    # Đảo ngược để duyệt theo dòng thời gian (Cũ -> Mới)
-    hist_reversed = history[::-1]
-    
-    for i in range(1, len(hist_reversed)):
-        curr = hist_reversed[i]['result']
-        prev = hist_reversed[i-1]['result']
-        
-        # Logic Max Bệt (Liên tiếp giống nhau)
-        if curr == prev:
-            temp_bet += 1
-        else:
-            max_bet_streak = max(max_bet_streak, temp_bet)
-            temp_bet = 1
-            
-        # Logic Max Nhảy (Liên tiếp khác nhau: T-X-T-X)
-        if curr != prev:
-            temp_nhay += 1
-        else:
-            max_nhay_streak = max(max_nhay_streak, temp_nhay)
-            temp_nhay = 1
-            
-    # Chốt sổ lần cuối
-    max_bet_streak = max(max_bet_streak, temp_bet)
-    max_nhay_streak = max(max_nhay_streak, temp_nhay)
-
-    # --- DỰ ĐOÁN (PREDICTION) ---
-    prediction_val = ''
-    confidence = 0
-    reason = ''
-    
-    # Đang bệt hay đang nhảy?
-    is_beting = False
-    is_nhaying = False
-    
-    if len(history) >= 2:
-        if history[0]['result'] == history[1]['result']:
-            is_beting = True
-        else:
-            is_nhaying = True
-            
-    # Logic Dự Đoán
-    if current_streak >= 5:
-        prediction_val = 'Xỉu' if current_type == 'Tài' else 'Tài'
-        confidence = min(current_streak * 12, 85)
-        reason = f"Đang bệt {current_type} {current_streak} ván, dễ gãy cầu"
-        
-    elif is_nhaying and current_streak == 1: 
-        # Đang đi cầu 1-1 (Vừa đổi màu)
-        # Kiểm tra xem dây nhảy này dài bao nhiêu rồi
-        curr_nhay_len = 0
-        for i in range(len(history)-1):
+    # Lấy chuỗi 1-1 liên tiếp (Nhảy)
+    # Ví dụ: T-X-T-X (streak = 4)
+    current_switch_streak = 0
+    if len(history) >= 2 and history[0]['result'] != history[1]['result']:
+        # Đang ở trạng thái nhảy
+        current_switch_streak = 1 # Đã nhảy 1 nhịp (cặp mới nhất)
+        for i in range(1, len(history)-1):
             if history[i]['result'] != history[i+1]['result']:
-                curr_nhay_len += 1
+                current_switch_streak += 1
             else:
                 break
+    
+    # --- THUẬT TOÁN DỰ ĐOÁN ---
+    # Logic: Bắt bẻ cầu khi dây quá dài
+    pred = ""
+    conf = 0
+    reason = ""
+    
+    if current_streak >= 5:
+        # Đang Bệt dài >= 5 -> Dự đoán Bẻ (Gãy)
+        pred = "Xỉu" if last_res == "Tài" else "Tài"
+        conf = 85
+        reason = f"Đang Bệt {last_res} {current_streak} tay. Nguy cơ gãy cao!"
         
-        if curr_nhay_len >= 4:
-            prediction_val = history[0]['result'] # Bắt bệt lại (Gãy cầu nhảy)
-            confidence = 60
-            reason = f"Cầu nhảy dài {curr_nhay_len} nhịp, canh bắt Bệt"
-        else:
-            prediction_val = 'Xỉu' if history[0]['result'] == 'Tài' else 'Tài' # Bắt tiếp cầu nhảy
-            confidence = 50
-            reason = "Đang đi cầu 1-1 đẹp"
-            
-    elif total_bet > total_nhay * 1.5:
-        prediction_val = 'Xỉu' if history[0]['result'] == 'Tài' else 'Tài'
-        confidence = 55
-        reason = f"Tổng Bệt quá nhiều ({total_bet}), xu hướng về Nhảy"
+    elif current_streak >= 3:
+        # Đang Bệt 3-4 -> Thường theo tiếp Bệt (Nuôi cầu)
+        pred = last_res
+        conf = 65
+        reason = f"Cầu đang chạy Bệt {current_streak}. Theo cầu."
+        
+    elif current_switch_streak >= 4:
+        # Đang Nhảy dài >= 4 nhịp (T-X-T-X) -> Dự đoán Bắt Bệt lại
+        # Ván vừa rồi là A, thì ván này B, dự đoán ván sau là B (Bệt lại)
+        # Nhưng đây là dự đoán kết quả ván tới. 
+        # Nếu chuỗi 1-1 dài, thường nó sẽ gãy về Bệt.
+        # Ván mới nhất là A. Theo quy luật 1-1 thì ván tới là B.
+        # Nhưng nếu bẻ cầu 1-1 thì ván tới là A.
+        pred = last_res 
+        conf = 60
+        reason = f"Cầu 1-1 đã chạy {current_switch_streak} nhịp. Canh bắt Bệt."
         
     else:
-        # Mặc định theo cầu nghiêng
-        if tai_count > xiu_count:
-            prediction_val = 'Xỉu' # Cân bằng lại
-            confidence = 45
-            reason = "Tài đang nhiều hơn, nuôi Xỉu"
+        # Không có cầu rõ ràng -> Dựa vào xác suất bù trừ
+        if count_bet > count_nhay * 1.5:
+            # Bệt nhiều quá -> Dự Nhảy
+            pred = "Xỉu" if last_res == "Tài" else "Tài"
+            conf = 55
+            reason = "Tổng Bệt áp đảo, xu hướng trả Nhảy."
+        elif tai > xiu + 2:
+            pred = "Xỉu"
+            conf = 50
+            reason = "Tài đang nhiều hơn Xỉu, nuôi cân cửa."
+        elif xiu > tai + 2:
+            pred = "Tài"
+            conf = 50
+            reason = "Xỉu đang nhiều hơn Tài, nuôi cân cửa."
         else:
-            prediction_val = 'Tài'
-            confidence = 45
-            reason = "Xỉu đang nhiều hơn, nuôi Tài"
+            pred = "..."
+            reason = "Chờ thêm dữ liệu"
 
     return {
-        'total': total,
-        'tai': tai_count,
-        'xiu': xiu_count,
-        'tai_pct': round(tai_count/total*100, 0) if total else 0,
-        'xiu_pct': round(xiu_count/total*100, 0) if total else 0,
-        'total_bet': total_bet,
-        'total_nhay': total_nhay,
-        'max_bet': max_bet_streak,
-        'max_nhay': max_nhay_streak,
-        'pred_val': prediction_val,
-        'confidence': confidence,
-        'reason': reason
+        'total': total, 'tai': tai, 'xiu': xiu,
+        'bet': count_bet, 'nhay': count_nhay,
+        'pred': pred, 'conf': conf, 'reason': reason
     }
 
-# --- GIAO DIỆN HEADER ---
-col_h1, col_h2 = st.columns([4, 1])
-with col_h1:
-    st.markdown("## 🎲 TAI XIU AUTO TRACKER")
-    st.caption("Thống kê Bệt/Nhảy chuẩn xác")
-with col_h2:
-    if st.button("🗑️ Xóa"):
+# --- HEADER ---
+c_h1, c_h2 = st.columns([5, 1])
+with c_h1:
+    st.markdown("### 🎯 AI SOI CẦU PRO")
+with c_h2:
+    if st.button("🗑️ Reset"):
         st.session_state.history = []
         st.rerun()
 
-# --- KHU VỰC NHẬP LIỆU ---
-st.markdown('<div class="css-card">', unsafe_allow_html=True)
-c1, c2 = st.columns(2)
-with c1:
-    if st.button("🔴 TÀI", key="btn_tai", use_container_width=True, type="primary"):
-        add_result("Tài")
-        st.rerun()
-with c2:
-    if st.button("🔵 XỈU", key="btn_xiu", use_container_width=True, type="primary"):
-        add_result("Xỉu")
-        st.rerun()
+# --- MAIN ANALYSIS & PREDICTION ---
+data = phan_tich_va_du_doan(st.session_state.history)
 
-# Nhập nhanh
-with st.expander("⌨️ Nhập nhanh chuỗi số"):
-    quick_input = st.text_input("Dán chuỗi số vào đây (VD: 12 4 13...)", key="quick_in")
-    if st.button("Thêm chuỗi"):
-        if quick_input:
-            nums = [int(s) for s in quick_input.split() if s.isdigit()]
-            for n in nums:
-                if 3 <= n <= 18:
-                    res = 'Tài' if n >= 11 else 'Xỉu'
-                    # Thêm ngược từ quá khứ (cuối chuỗi) -> hiện tại
-                    # Nhưng logic add_result là thêm lên đầu, nên ta duyệt xuôi
-                    # VD nhập: 12 (cũ) 13 (mới) -> add 12 trước, add 13 sau
-                    new_entry = {
-                        'id': datetime.datetime.now().timestamp() + n,
-                        'result': res,
-                        'total': n,
-                        'timestamp': datetime.datetime.now().strftime("%H:%M:%S")
-                    }
-                    st.session_state.history.insert(0, new_entry)
-            st.rerun()
-st.markdown('</div>', unsafe_allow_html=True)
-
-# --- PHÂN TÍCH & DỰ ĐOÁN ---
-if st.session_state.history:
-    data = analyze_data(st.session_state.history)
+if data and data['pred'] != "...":
+    # Xác định màu sắc Card dựa trên dự đoán
+    card_class = "pred-tai" if data['pred'] == "Tài" else "pred-xiu"
     
-    # 1. CARD DỰ ĐOÁN (NỔI BẬT NHẤT)
     st.markdown(f"""
-    <div class="css-card" style="border: 2px solid {'#ef4444' if data['pred_val'] == 'Tài' else '#3b82f6'}; text-align: center;">
-        <div style="font-size: 14px; color: #9ca3af; margin-bottom: 5px;">DỰ ĐOÁN VÁN TIẾP THEO</div>
-        <div style="font-size: 60px; font-weight: 900; line-height: 1; color: {'#ef4444' if data['pred_val'] == 'Tài' else '#3b82f6'};">
-            {data['pred_val'].upper()}
-        </div>
-        <div style="font-size: 24px; font-weight: bold; color: #f472b6; margin-top: 10px;">
-            {data['confidence']}%
-        </div>
-        <div style="color: #d1d5db; font-style: italic; margin-top: 5px;">
-            "{data['reason']}"
-        </div>
+    <div class="prediction-card {card_class}">
+        <div style="font-size: 14px; opacity: 0.8; margin-bottom: 5px;">🤖 AI DỰ ĐOÁN VÁN TIẾP THEO</div>
+        <div class="big-text">{data['pred'].upper()}</div>
+        <div class="sub-text">{data['reason']}</div>
+        <div class="confidence-badge">⚡ Độ tin cậy: {data['conf']}%</div>
+    </div>
+    """, unsafe_allow_html=True)
+else:
+    st.markdown("""
+    <div class="prediction-card pred-wait">
+        <div style="font-size: 40px;">⏳</div>
+        <div class="sub-text">Đang chờ nhập dữ liệu...</div>
     </div>
     """, unsafe_allow_html=True)
 
-    # 2. THỐNG KÊ TỔNG QUAN
-    c_s1, c_s2, c_s3 = st.columns(3)
-    with c_s1:
-        st.markdown(f"""
-        <div class="css-card" style="text-align:center">
-            <div class="stat-label">TỔNG VÁN</div>
-            <div class="stat-value">{data['total']}</div>
-        </div>""", unsafe_allow_html=True)
-    with c_s2:
-        st.markdown(f"""
-        <div class="css-card" style="text-align:center; border-bottom: 4px solid #ef4444;">
-            <div class="stat-label">TÀI</div>
-            <div class="stat-value" style="color:#f87171">{data['tai']}</div>
-            <div style="font-size:12px; color:#fca5a5">{data['tai_pct']}%</div>
-        </div>""", unsafe_allow_html=True)
-    with c_s3:
-        st.markdown(f"""
-        <div class="css-card" style="text-align:center; border-bottom: 4px solid #3b82f6;">
-            <div class="stat-label">XỈU</div>
-            <div class="stat-value" style="color:#60a5fa">{data['xiu']}</div>
-            <div style="font-size:12px; color:#93c5fd">{data['xiu_pct']}%</div>
-        </div>""", unsafe_allow_html=True)
-
-    # 3. THỐNG KÊ BỆT / NHẢY (THEO YÊU CẦU CỦA BẠN)
-    col_pat1, col_pat2 = st.columns(2)
-    
-    # Card BỆT
-    with col_pat1:
-        st.markdown(f"""
-        <div class="css-card">
-            <div style="display:flex; align-items:center; gap:10px; margin-bottom:15px;">
-                <div style="font-size:24px;">🔥</div>
-                <div style="font-weight:bold; color:#fbbf24; font-size:18px;">CẦU BỆT (Dây)</div>
-            </div>
-            <div style="display:flex; justify-content:space-between; align-items:end;">
-                <div>
-                    <div class="stat-label">TỔNG ĐIỂM BỆT</div>
-                    <div class="stat-value" style="color:#fbbf24">{data['total_bet']}</div>
-                </div>
-                <div style="text-align:right;">
-                    <div class="stat-label">DÂY DÀI NHẤT</div>
-                    <div style="font-size:24px; font-weight:bold; color:#fff">{data['max_bet']}</div>
-                </div>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
+# --- INPUT BUTTONS ---
+c1, c2 = st.columns(2)
+with c1:
+    if st.button("🔴 TÀI", use_container_width=True, type="primary"):
+        add_result("Tài")
+        st.rerun()
+with c2:
+    if st.button("🔵 XỈU", use_container_width=True, type="primary"):
+        add_result("Xỉu")
+        st.rerun()
         
-    # Card NHẢY
-    with col_pat2:
-        st.markdown(f"""
-        <div class="css-card">
-            <div style="display:flex; align-items:center; gap:10px; margin-bottom:15px;">
-                <div style="font-size:24px;">⚡</div>
-                <div style="font-weight:bold; color:#34d399; font-size:18px;">CẦU NHẢY (1-1)</div>
-            </div>
-            <div style="display:flex; justify-content:space-between; align-items:end;">
-                <div>
-                    <div class="stat-label">TỔNG ĐIỂM NHẢY</div>
-                    <div class="stat-value" style="color:#34d399">{data['total_nhay']}</div>
-                </div>
-                <div style="text-align:right;">
-                    <div class="stat-label">NHẢY DÀI NHẤT</div>
-                    <div style="font-size:24px; font-weight:bold; color:#fff">{data['max_nhay']}</div>
-                </div>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
+# Nhập nhanh
+with st.expander("⌨️ Nhập chuỗi số"):
+    txt = st.text_input("VD: 12 4 10 (Mới nhất bên trái)", label_visibility="collapsed")
+    if st.button("Nạp chuỗi"):
+        nums = [int(s) for s in txt.split() if s.isdigit()]
+        # Duyệt ngược để nạp đúng thứ tự thời gian (Số cuối cùng nhập trước)
+        for n in nums[::-1]:
+            res = 'Tài' if 11 <= n <= 18 else ('Xỉu' if 3 <= n <= 10 else None)
+            if res: add_result(res)
+        st.rerun()
 
-    # 4. BIỂU ĐỒ & LỊCH SỬ
-    c_chart, c_hist = st.columns([1, 2])
+# --- STATS GRID ---
+if data:
+    st.markdown("<br>", unsafe_allow_html=True)
+    cols = st.columns(4)
+    with cols[0]:
+        st.markdown(f"""<div class="stat-box"><div class="stat-num">{data['total']}</div><div class="stat-label">Tổng ván</div></div>""", unsafe_allow_html=True)
+    with cols[1]:
+        st.markdown(f"""<div class="stat-box" style="border-color:#ef4444"><div class="stat-num" style="color:#f87171">{data['tai']}</div><div class="stat-label">Tài</div></div>""", unsafe_allow_html=True)
+    with cols[2]:
+        st.markdown(f"""<div class="stat-box" style="border-color:#3b82f6"><div class="stat-num" style="color:#60a5fa">{data['xiu']}</div><div class="stat-label">Xỉu</div></div>""", unsafe_allow_html=True)
+    with cols[3]:
+        # Tỷ lệ Bệt/Nhảy
+        ratio = f"{data['bet']}/{data['nhay']}"
+        st.markdown(f"""<div class="stat-box"><div class="stat-num text-yellow-400" style="color:#fbbf24">{ratio}</div><div class="stat-label">Bệt / Nhảy</div></div>""", unsafe_allow_html=True)
+
+# --- HISTORY VISUAL ---
+if st.session_state.history:
+    st.markdown("---")
+    st.caption("📜 Lịch sử (Trái: Mới nhất ➜ Phải: Cũ nhất)")
     
-    with c_chart:
-        # Biểu đồ tròn Bệt vs Nhảy
-        fig = px.pie(names=['Bệt', 'Nhảy'], values=[data['total_bet'], data['total_nhay']],
-                     color=['Bệt', 'Nhảy'], 
-                     color_discrete_map={'Bệt':'#f59e0b', 'Nhảy':'#10b981'},
-                     hole=0.6)
-        fig.update_layout(
-            showlegend=False, 
-            paper_bgcolor="rgba(0,0,0,0)", 
-            plot_bgcolor="rgba(0,0,0,0)",
-            margin=dict(t=0, b=0, l=0, r=0),
-            height=200,
-            annotations=[dict(text=f"{data['total_bet']}/{data['total_nhay']}", x=0.5, y=0.5, font_size=20, showarrow=False, font_color='white')]
-        )
-        st.markdown('<div class="css-card" style="height: 240px; display:flex; align-items:center; justify-content:center;">', unsafe_allow_html=True)
-        st.plotly_chart(fig, use_container_width=True)
-        st.markdown('</div>', unsafe_allow_html=True)
-
-    with c_hist:
-        # Lịch sử dạng Visual
-        hist_html = ""
-        for item in st.session_state.history[:48]: # 48 ván gần nhất
-            cls = "his-tai" if item['result'] == 'Tài' else "his-xiu"
-            val = str(item['total']) if item['total'] else ("T" if item['result'] == 'Tài' else "X")
-            hist_html += f'<div class="history-item {cls}">{val}</div>'
-            
-        st.markdown(f"""
-        <div class="css-card" style="height: 240px; overflow-y: auto;">
-            <div class="stat-label" style="margin-bottom:10px;">LỊCH SỬ GẦN NHẤT</div>
-            <div class="history-container">
-                {hist_html}
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
-
-else:
-    st.info("👈 Bắt đầu bằng cách nhập TÀI hoặc XỈU")
+    html = '<div style="overflow-x: auto; white-space: nowrap; padding-bottom: 10px;">'
+    for item in st.session_state.history:
+        cls = "dot-tai" if item['result'] == "Tài" else "dot-xiu"
+        txt = "T" if item['result'] == "Tài" else "X"
+        html += f'<span class="history-dot {cls}">{txt}</span>'
+    html += '</div>'
+    
+    st.markdown(html, unsafe_allow_html=True)
+    
+    # Nút Undo
+    if st.button("↩️ Xóa ván vừa nhập"):
+        st.session_state.history.pop(0)
+        st.rerun()
