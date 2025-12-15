@@ -1,139 +1,30 @@
 import streamlit as st
 import pandas as pd
-import easyocr
-import cv2
-import numpy as np
 
-# --- CẤU HÌNH TRANG ---
-st.set_page_config(page_title="Soi Cầu AI Pro", page_icon="🎲", layout="centered")
+# --- CẤU HÌNH ---
+st.set_page_config(page_title="Soi Cầu Pro (Lite)", page_icon="🎲", layout="centered")
 
-# --- CSS GIAO DIỆN ---
+# --- CSS TÙY CHỈNH ---
 st.markdown("""
     <style>
     .stButton>button { width: 100%; border-radius: 8px; height: 3.5em; font-weight: bold;}
     div[data-testid="stMetricValue"] { font-size: 24px; }
+    .big-font { font-size: 18px !important; color: #333; }
     </style>
 """, unsafe_allow_html=True)
-
-# --- KHỞI TẠO AI ---
-@st.cache_resource
-def load_ai_reader():
-    return easyocr.Reader(['en'], gpu=False)
-
-# --- CẬP NHẬT HÀM XỬ LÝ ẢNH (PHIÊN BẢN 2.0 - SIÊU NÉT) ---
-def doc_so_tu_anh(uploaded_file):
-    try:
-        # 1. Đọc ảnh gốc
-        file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
-        image = cv2.imdecode(file_bytes, 1)
-        
-        # === CẢI TIẾN QUAN TRỌNG: PHÓNG TO ẢNH ===
-        # Phóng to gấp 3 lần để tách rõ các con số nhỏ
-        scale_percent = 300 # 300%
-        width = int(image.shape[1] * scale_percent / 100)
-        height = int(image.shape[0] * scale_percent / 100)
-        dim = (width, height)
-        image = cv2.resize(image, dim, interpolation=cv2.INTER_CUBIC)
-
-        # 2. Xử lý màu sắc (Tăng tương phản mạnh)
-        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-        
-        # Dùng Adaptive Threshold (Thích ứng) để xử lý vòng tròn quanh số tốt hơn
-        thresh = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
-                                       cv2.THRESH_BINARY_INV, 31, 15)
-
-        # 3. Gọi AI đọc (Chế độ đọc số)
-        reader = load_ai_reader()
-        raw_results = reader.readtext(thresh, detail=1, allowlist='0123456789')
-        
-        detected_items = []
-        for (bbox, text, prob) in raw_results:
-            if not text.isdigit(): continue
-            num = int(text)
-            if not (3 <= num <= 18): continue
-            
-            # Lấy tâm
-            (tl, tr, br, bl) = bbox
-            center_x = int((tl[0] + tr[0]) / 2)
-            center_y = int((tl[1] + bl[1]) / 2)
-            detected_items.append({'val': num, 'cx': center_x, 'cy': center_y})
-
-        if not detected_items:
-            return []
-
-        # 4. Sắp xếp Cột Dọc (Logic đã điều chỉnh theo tỷ lệ phóng to)
-        detected_items.sort(key=lambda k: k['cx'])
-
-        sorted_results = []
-        current_column = []
-        
-        if len(detected_items) > 0:
-            current_column.append(detected_items[0])
-            # Vì ảnh phóng to gấp 3, khoảng cách giữa các cột cũng tăng lên
-            THRESHOLD_X = 60 # Tăng ngưỡng lệch cột lên (cũ là 30)
-            
-            for i in range(1, len(detected_items)):
-                diff = abs(detected_items[i]['cx'] - detected_items[i-1]['cx'])
-                
-                if diff < THRESHOLD_X:
-                    current_column.append(detected_items[i])
-                else:
-                    current_column.sort(key=lambda k: k['cy'])
-                    sorted_results.extend([item['val'] for item in current_column])
-                    current_column = [detected_items[i]]
-            
-            current_column.sort(key=lambda k: k['cy'])
-            sorted_results.extend([item['val'] for item in current_column])
-
-        return sorted_results
-
-    except Exception as e:
-        st.error(f"Lỗi: {e}")
-        return []
-        # --- LOGIC SẮP XẾP CỘT ---
-        # B1: Sắp xếp tất cả theo tọa độ X (để gom các số cùng cột lại gần nhau)
-        detected_items.sort(key=lambda k: k['cx'])
-
-        sorted_results = []
-        current_column = []
-        
-        if len(detected_items) > 0:
-            current_column.append(detected_items[0])
-            
-            # B2: Duyệt qua danh sách, nếu X lệch ít (< 30px) thì coi là cùng cột
-            # Nếu X lệch nhiều -> Qua cột mới
-            THRESHOLD_X = 30 # Độ lệch cho phép (pixel)
-            
-            for i in range(1, len(detected_items)):
-                diff = abs(detected_items[i]['cx'] - detected_items[i-1]['cx'])
-                
-                if diff < THRESHOLD_X:
-                    # Vẫn là cột cũ
-                    current_column.append(detected_items[i])
-                else:
-                    # Sang cột mới -> Sắp xếp cột cũ theo Y (Trên xuống dưới) rồi lưu lại
-                    current_column.sort(key=lambda k: k['cy'])
-                    sorted_results.extend([item['val'] for item in current_column])
-                    # Reset cột mới
-                    current_column = [detected_items[i]]
-            
-            # Lưu cột cuối cùng
-            current_column.sort(key=lambda k: k['cy'])
-            sorted_results.extend([item['val'] for item in current_column])
-
-        return sorted_results
-
-    except Exception as e:
-        st.error(f"Lỗi xử lý: {e}")
-        return []
 
 # --- KHỞI TẠO DỮ LIỆU ---
 if 'history' not in st.session_state:
     st.session_state.history = []
+if 'init_tai' not in st.session_state:
+    st.session_state.init_tai = 0
+if 'init_xiu' not in st.session_state:
+    st.session_state.init_xiu = 0
 
+# --- HÀM LOGIC ---
 def them_ket_qua(diem=None, ket_qua=None):
     if diem is not None:
-        if diem > 0: 
+        if diem > 0:
             if 11 <= diem <= 18: ket_qua = 'Tài'
             elif 3 <= diem <= 10: ket_qua = 'Xỉu'
     st.session_state.history.append({'diem': diem, 'ket_qua': ket_qua})
@@ -142,7 +33,7 @@ def phan_tich_cau(data):
     if not data: return 0, 0, 0, 0
     results = [x['ket_qua'] for x in data]
     
-    # Bệt
+    # Tính Bệt
     bet_count, max_bet, current_bet = 0, 0, 1
     for i in range(1, len(results)):
         if results[i] == results[i-1]:
@@ -156,7 +47,7 @@ def phan_tich_cau(data):
         bet_count += 1
         max_bet = max(max_bet, current_bet)
 
-    # Nhảy
+    # Tính Nhảy
     nhay_count, max_nhay, current_nhay = 0, 0, 1
     for i in range(1, len(results)):
         if results[i] != results[i-1]:
@@ -172,96 +63,107 @@ def phan_tich_cau(data):
         
     return bet_count, max_bet, nhay_count, max_nhay
 
-# --- GIAO DIỆN ---
-st.title("🎲 SUPER SOI CẦU AI (Cột Dọc)")
+# --- GIAO DIỆN CHÍNH ---
+st.title("🎲 SUPER SOI CẦU (LITE)")
 
-# === UPLOAD ẢNH ===
-with st.expander("📸 QUÉT ẢNH TỰ ĐỘNG", expanded=True):
-    uploaded_file = st.file_uploader("Chọn ảnh (Cắt gọn khung điểm số):", type=['jpg', 'png', 'jpeg'])
-    
+# === PHẦN 1: CÀI ĐẶT THÔNG SỐ BAN ĐẦU ===
+with st.expander("⚙️ CÀI ĐẶT TỔNG TÀI/XỈU BAN ĐẦU", expanded=False):
+    c1, c2 = st.columns(2)
+    with c1:
+        st.session_state.init_tai = st.number_input("Tổng Tài hiện tại (trên game):", min_value=0, value=st.session_state.init_tai)
+    with c2:
+        st.session_state.init_xiu = st.number_input("Tổng Xỉu hiện tại (trên game):", min_value=0, value=st.session_state.init_xiu)
+    st.caption("💡 Nhập số lượng Tài/Xỉu bạn nhìn thấy trên màn hình game để thống kê tổng chính xác hơn.")
+
+# === PHẦN 2: ẢNH THAM KHẢO ===
+with st.expander("📸 MỞ ẢNH ĐỂ NHÌN & NHẬP", expanded=True):
+    uploaded_file = st.file_uploader("Tải ảnh game lên (Chỉ để xem):", type=['jpg', 'png', 'jpeg'])
     if uploaded_file is not None:
-        st.image(uploaded_file, caption="Ảnh đầu vào", use_container_width=True)
-        
-        if st.button("🚀 QUÉT SỐ THEO CỘT DỌC", type="primary"):
-            with st.spinner("AI đang đọc theo thứ tự Cột Dọc..."):
-                uploaded_file.seek(0)
-                ket_qua_so = doc_so_tu_anh(uploaded_file)
-                
-                if len(ket_qua_so) > 0:
-                    st.success(f"✅ Tìm thấy {len(ket_qua_so)} số (Thứ tự cột): {ket_qua_so}")
-                    st.session_state.temp_scan = ket_qua_so
-                else:
-                    st.warning("⚠️ Không tìm thấy số hợp lệ (3-18). Hãy cắt ảnh sát vào bảng số!")
+        st.image(uploaded_file, caption="Nhìn vào ảnh này để nhập liệu bên dưới 👇", use_container_width=True)
 
-    if 'temp_scan' in st.session_state and len(st.session_state.temp_scan) > 0:
-        if st.button("📥 Nạp dữ liệu này vào"):
-            st.session_state.history = [] 
-            for so in st.session_state.temp_scan:
-                them_ket_qua(diem=so)
-            del st.session_state.temp_scan
-            st.rerun()
-
-# === NHẬP LIỆU THỦ CÔNG ===
+# === PHẦN 3: NHẬP LIỆU ===
 st.divider()
-c1, c2, c3 = st.columns([1, 1, 1])
-with c1:
-    if st.button("🔴 TÀI"):
+st.caption("👇 BẤM ĐỂ NHẬP KẾT QUẢ MỚI")
+btn1, btn2, btn3 = st.columns([1, 1, 1.5])
+
+with btn1:
+    if st.button("🔴 TÀI", type="primary"):
         them_ket_qua(ket_qua="Tài", diem=0)
         st.rerun()
-with c2:
+with btn2:
     if st.button("🔵 XỈU"):
         them_ket_qua(ket_qua="Xỉu", diem=0)
         st.rerun()
-with c3:
-    with st.popover("🔢 Số"):
+with btn3:
+    with st.popover("🔢 Nhập Điểm Số"):
         num = st.number_input("Điểm:", 3, 18, step=1)
-        if st.button("Lưu"):
+        if st.button("Lưu Điểm"):
             them_ket_qua(diem=int(num))
             st.rerun()
 
-# === SỬA LỖI ===
+# === PHẦN 4: SỬA LỖI ===
 if len(st.session_state.history) > 0:
-    with st.expander("🛠️ SỬA / XÓA"):
-        if st.button("↩️ Undo"):
+    with st.expander("🛠️ SỬA / XÓA (5 ván gần nhất)"):
+        if st.button("↩️ Xóa ván vừa nhập (Undo)"):
             st.session_state.history.pop()
             st.rerun()
         
-        so_luong = len(st.session_state.history)
-        start = max(0, so_luong - 5)
-        with st.form("sua"):
-            for i in range(so_luong - 1, start - 1, -1):
+        # Form sửa
+        cnt = len(st.session_state.history)
+        start = max(0, cnt - 5)
+        with st.form("sua_loi"):
+            for i in range(cnt - 1, start - 1, -1):
                 item = st.session_state.history[i]
-                cc1, cc2, cc3 = st.columns([1, 2, 2])
-                with cc1: st.write(f"#{i+1}")
-                with cc2: 
+                c_idx, c_k, c_d = st.columns([1, 2, 2])
+                with c_idx: st.write(f"#{i+1}")
+                with c_k:
                     idx = 0 if item['ket_qua'] == 'Tài' else 1
-                    st.session_state[f"k_{i}"] = st.selectbox("", ["Tài", "Xỉu"], index=idx, key=f"s_{i}", label_visibility="collapsed")
-                with cc3:
-                    d_val = item['diem'] if item['diem'] else 0
-                    st.session_state[f"d_{i}"] = st.number_input("", value=d_val, key=f"n_{i}", label_visibility="collapsed")
-            if st.form_submit_button("Lưu"):
-                for i in range(so_luong - 1, start - 1, -1):
-                    st.session_state.history[i]['ket_qua'] = st.session_state[f"s_{i}"]
-                    n_val = st.session_state[f"n_{i}"]
-                    st.session_state.history[i]['diem'] = n_val if n_val > 0 else None
+                    st.session_state[f"k_{i}"] = st.selectbox("", ["Tài", "Xỉu"], index=idx, key=f"sel_{i}", label_visibility="collapsed")
+                with c_d:
+                    v_d = item['diem'] if item['diem'] else 0
+                    st.session_state[f"d_{i}"] = st.number_input("", value=v_d, min_value=0, max_value=18, key=f"num_{i}", label_visibility="collapsed")
+            
+            if st.form_submit_button("💾 Lưu thay đổi"):
+                for i in range(cnt - 1, start - 1, -1):
+                    st.session_state.history[i]['ket_qua'] = st.session_state[f"sel_{i}"]
+                    val = st.session_state[f"num_{i}"]
+                    st.session_state.history[i]['diem'] = val if val > 0 else None
                 st.rerun()
 
-# === DASHBOARD ===
-if len(st.session_state.history) > 0:
-    st.divider()
-    df = pd.DataFrame(st.session_state.history)
-    tong = len(df)
-    tai = len(df[df['ket_qua'] == 'Tài'])
-    xiu = len(df[df['ket_qua'] == 'Xỉu'])
-    
-    m1, m2, m3 = st.columns(3)
-    m1.metric("Tổng", tong)
-    m2.metric("Tài 🔴", f"{tai}")
-    m3.metric("Xỉu 🔵", f"{xiu}")
-    
-    bet, max_bet, nhay, max_nhay = phan_tich_cau(st.session_state.history)
-    st.info(f"🐍 Bệt max: {max_bet} | ⚡ Nhảy max: {max_nhay}")
-    
-    icons = ["🔴" if h['ket_qua'] == 'Tài' else "🔵" for h in st.session_state.history]
-    st.text_area("Log", " ".join(icons))
+# === PHẦN 5: THỐNG KÊ (DASHBOARD) ===
+st.divider()
 
+# Tính toán tổng hợp
+sl_tai_nhap = len([x for x in st.session_state.history if x['ket_qua'] == 'Tài'])
+sl_xiu_nhap = len([x for x in st.session_state.history if x['ket_qua'] == 'Xỉu'])
+
+# Tổng = Số ban đầu + Số vừa nhập thêm
+tong_tai = st.session_state.init_tai + sl_tai_nhap
+tong_xiu = st.session_state.init_xiu + sl_xiu_nhap
+tong_cong = tong_tai + tong_xiu
+
+# Hiển thị
+m1, m2, m3 = st.columns(3)
+m1.metric("TỔNG SỐ VÁN", tong_cong)
+
+if tong_cong > 0:
+    pct_tai = (tong_tai / tong_cong) * 100
+    pct_xiu = (tong_xiu / tong_cong) * 100
+    m2.metric("🔴 TỔNG TÀI", f"{tong_tai}", f"{pct_tai:.1f}%")
+    m3.metric("🔵 TỔNG XỈU", f"{tong_xiu}", f"{pct_xiu:.1f}%")
+else:
+    m2.metric("🔴 TỔNG TÀI", 0)
+    m3.metric("🔵 TỔNG XỈU", 0)
+
+# Phân tích Cầu (Chỉ tính trên lịch sử nhập, không tính số ban đầu vì không biết thứ tự)
+if len(st.session_state.history) > 0:
+    st.caption(f"--- Phân tích Cầu (Dựa trên {len(st.session_state.history)} ván vừa nhập) ---")
+    bet, max_bet, nhay, max_nhay = phan_tich_cau(st.session_state.history)
+    
+    k1, k2 = st.columns(2)
+    k1.info(f"🐍 Bệt dài nhất: {max_bet}")
+    k2.warning(f"⚡ Nhảy dài nhất: {max_nhay}")
+    
+    st.write("##### 📜 Biểu đồ:")
+    icons = ["🔴" if h['ket_qua'] == 'Tài' else "🔵" for h in st.session_state.history]
+    st.text_area("", "  ➜  ".join(icons), height=100)
